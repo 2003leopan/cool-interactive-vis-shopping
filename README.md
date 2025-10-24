@@ -15,21 +15,6 @@ python -m http.server 8080
 # then visit http://localhost:8080
 ```
 
-## Deploy to GitHub Pages (recommended structure)
-1. Create a new repo, e.g., `a4-mvp-customer-viz`.
-2. Upload these files, preserving folders:
-```
-/data/shopping_behavior_updated.csv
-/src/app.js
-index.html
-styles.css
-README.md
-```
-3. In GitHub → **Settings → Pages** → **Build and deployment**
-   - Source: **Deploy from a branch**
-   - Branch: **main** (root)
-4. Wait for GH Pages to build, then open the provided URL.
-
 ## File layout
 ```
 index.html       # Main page, loads D3 and app.js
@@ -37,9 +22,3 @@ styles.css       # Styling
 src/app.js       # D3 chart logic
 data/...csv      # Dataset
 ```
-
-## Next steps (post-MVP)
-- Add Season slider for seasonality
-- Add Subscription/Loyalty view (frequency, subscription status)
-- Geography breakdown (state-wise)
-- Narrative annotations for spikes
