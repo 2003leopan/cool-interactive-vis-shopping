@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>A4 MVP — Customer Behavior Explorer</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- D3 v7 CDN -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Customer Behavior Explorer (MVP)</h1>
+    <p class="subtitle">Average purchase amount by category, with interactive demographic filter.</p>
+  </header>
+
+  <section class="controls">
+    <label for="filterSelect">Filter by:</label>
+    <select id="filterSelect">
+      <option value="Gender" selected>Gender</option>
+      <option value="Age Group">Age Group</option>
+    </select>
+
+    <label for="valueSelect">Show value:</label>
+    <select id="valueSelect">
+      <option value="avg" selected>Average Purchase Amount</option>
+      <option value="count">Number of Purchases</option>
+    </select>
+  </section>
+
+  <main>
+    <div id="chart"></div>
+    <div id="tooltip" class="tooltip" style="opacity:0;"></div>
+  </main>
+
+  <footer>
+    <p>Data: Shopping behavior dataset (3,900 customers). MVP demonstrates core encoding, interaction, and animation.</p>
+  </footer>
+
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
