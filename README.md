@@ -1,24 +1,27 @@
-# A4 MVP — Customer Behavior Explorer
+## Interactive Shopping Behavior Visualization
 
-**What this MVP demonstrates**
-- D3.js bar chart of *Average Purchase Amount by Category*
-- Dropdown to switch grouping: **Gender** or **Age Group**
-- Animated transitions on update
-- Tooltip details-on-demand
-- Clean structure for quick iteration
+Live site (GitHub Pages):
+https://2003leopan.github.io/cool-interactive-vis-shopping/
 
-## Run locally
-Just open `index.html` with a local server (due to browser CSV loading rules).
-For example with Python 3 from the project root:
-```bash
-python -m http.server 8080
-# then visit http://localhost:8080
-```
+This is an interactive D3.js dashboard analyzing shopping behavior across demographics, seasons, and loyalty metrics. It includes:
 
-## File layout
-```
-index.html       # Main page, loads D3 and app.js
-styles.css       # Styling
-src/app.js       # D3 chart logic
-data/...csv      # Dataset
-```
+- Grouped bar charts (avg spend and purchase frequency)
+- Filters for gender, age, season, shipping, subscription, discount
+- Cascading bar animation
+- Seasonal scrubber
+- Loyalty scatter view (spend vs repeat shopping)
+- Tooltips + legends + responsive layout
+
+### Dataset Source
+Shopping Behavior Dataset — by AhmadRazaKashif  
+https://www.kaggle.com/datasets/ahmadrazakashif/shopping-behavior-dataset
+
+### How to view
+Simply open the live link above (no setup required).
+Tested on: Chrome
+
+### Files
+- `index.html`
+- `styles.css`
+- `app.js`
+- `data/shopping_behavior_updated.csv`
