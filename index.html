@@ -17,8 +17,12 @@
   <section class="controls">
     <label for="filterSelect">Filter by:</label>
     <select id="filterSelect">
-      <option value="Gender" selected>Gender</option>
+      <option value="Gender">Gender</option>
       <option value="Age Group">Age Group</option>
+      <option value="Season">Season</option>
+      <option value="Shipping Type">Shipping Type</option>
+      <option value="Subscription Status">Subscription Status</option>
+      <option value="Discount Applied">Discount Applied</option>
     </select>
 
     <label for="valueSelect">Show value:</label>
@@ -26,15 +30,40 @@
       <option value="avg" selected>Average Purchase Amount</option>
       <option value="count">Number of Purchases</option>
     </select>
+
+    <label for="sortSelect" style="margin-left:8px;">Sort:</label>
+    <select id="sortSelect">
+      <option value="alpha" selected>Category (A–Z)</option>
+      <option value="value_desc">Highest Value ↓</option>
+    </select>
+
+    <label for="viewSelect" style="margin-left:8px;">View:</label>
+    <select id="viewSelect">
+      <option value="overview" selected>Overview (Bars)</option>
+      <option value="loyalty">Loyalty (Scatter)</option>
+    </select>
+
   </section>
+
+  <div id="seasonScrubber" class="scrubber">
+    <button data-season="All" class="on">All</button>
+    <button data-season="Winter">Winter</button>
+    <button data-season="Spring">Spring</button>
+    <button data-season="Summer">Summer</button>
+    <button data-season="Fall">Fall</button>
+  </div>
 
   <main>
     <div id="chart"></div>
-    <div id="tooltip" class="tooltip" style="opacity:0;"></div>
+    <div id="tooltip" class="tooltip"></div>
+    <div id="chart2" style="display:none;"></div> 
   </main>
 
   <footer>
     <p>Data: Shopping behavior dataset (3,900 customers). MVP demonstrates core encoding, interaction, and animation.</p>
+    <div style="font-size:12px; color:#aaa; margin-top:20px;">
+      Data Source: <a href="https://www.kaggle.com/datasets/ahmadrazakashif/shopping-behavior-dataset" target="_blank">Kaggle — Customer Shopping Behavior Dataset</a>
+    </div>
   </footer>
 
   <script type="module" src="src/app.js"></script>

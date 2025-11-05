@@ -43,7 +43,11 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
     amount: +d["Purchase Amount (USD)"],
     age: +d["Age"],
     season: d["Season"],
-    shipping: d["Shipping Type"]
+    shipping: d["Shipping Type"],
+    subscription: d["Subscription Status"],
+    discount: d["Discount Applied"],
+    previous: +d["Previous Purchases"],
+    frequency: d["Frequency of Purchases"]
   })).filter(d => d.category && !Number.isNaN(d.amount));
 
   // Age binning for clarity
@@ -61,9 +65,43 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
   // UI state
   let filterDim = "Gender"; // "Gender" | "Age Group" | "Season" | "Shipping Type"
   let valueType = "avg";    // "avg" | "count"
+  let seasonFilter = "All"; // "All" | "Winter" | "Spring" | "Summer" | "Fall"
+  let sortMode = "alpha";
+  let viewMode = "overview";
+
 
   const filterSelect = document.getElementById("filterSelect");
   const valueSelect  = document.getElementById("valueSelect");
+  const scrub = d3.select("#seasonScrubber");
+  const sortSelect = document.getElementById("sortSelect");
+  const viewSelect = document.getElementById("viewSelect");
+  
+  
+  viewSelect.addEventListener("change", () => {
+    viewMode = viewSelect.value;
+    if (viewMode === "overview") {
+      d3.select("#chart2").style("display","none");
+      d3.select("#chart").style("display","block");
+      update();
+    } else {
+      d3.select("#chart").style("display","none");
+      d3.select("#chart2").style("display","block");
+      renderLoyalty();
+    }
+  });
+
+  sortSelect.addEventListener("change", () => {
+    sortMode = sortSelect.value;
+    update();
+  });
+
+  scrub.selectAll("button").on("click", (evt) => {
+    seasonFilter = evt.currentTarget.dataset.season;     // update state
+    scrub.selectAll("button").classed("on", false);      // toggle active
+    d3.select(evt.currentTarget).classed("on", true);
+    update();                                            // re-render
+    if (viewMode === "loyalty") renderLoyalty();
+  });
 
   filterSelect.addEventListener("change", () => {
     filterDim = filterSelect.value;
@@ -80,6 +118,8 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
     if (filterDim === "Age Group") return d.ageGroup;
     if (filterDim === "Season") return d.season;
     if (filterDim === "Shipping Type") return d.shipping;
+    if (filterDim === "Subscription Status") return d.subscription;
+    if (filterDim === "Discount Applied") return d.discount;
     return "Other";
   }
 
@@ -97,8 +137,12 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
 
   function groupAndAggregate() {
     // rollups by (category, currentGroup)
+    const filtered = (seasonFilter === "All")
+      ? data
+      : data.filter(d => d.season === seasonFilter);
+
     const rolled = d3.rollups(
-      data,
+      filtered,                           // <-- use filtered, not data
       v => ({
         avg: d3.mean(v, d => d.amount),
         count: v.length,
@@ -129,35 +173,61 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
     return { byCategory, groups };
   }
 
+
   function update() {
     const { byCategory, groups } = groupAndAggregate();
 
+    // ----- sort categories before scaling -----
+    const categoryMetric = d => d3.mean(d.values, v => v.value) ?? 0;
+
+    const catsSorted = (sortMode === "alpha")
+      ? byCategory.slice().sort((a, b) => d3.ascending(a.category, b.category))
+      : byCategory.slice().sort((a, b) => d3.descending(categoryMetric(a), categoryMetric(b)));
+
+    // index map for staggered animation (category left→right)
+    const catIndex = new Map(catsSorted.map((d, i) => [d.category, i]));
+
     // Scales
-    x.domain(byCategory.map(d => d.category)).range([0, width]);
-    const maxY = d3.max(byCategory, d => d3.max(d.values, v => v.value)) || 0;
+    x.domain(catsSorted.map(d => d.category)).range([0, width]);
+    const maxY = d3.max(catsSorted, d => d3.max(d.values, v => v.value)) || 0;
     y.domain([0, maxY * 1.1]).range([height, 0]);
     color.domain(groups);
 
     // Axes
     const xAxis = d3.axisBottom(x);
     const yAxis = d3.axisLeft(y).ticks(6).tickFormat(d => valueType === "avg" ? `$${d.toFixed(0)}` : d);
-    xAxisG.transition().duration(600).call(xAxis)
-      .selectAll("text").style("text-anchor", "end").attr("transform", "rotate(-30)");
-    yAxisG.transition().duration(600).call(yAxis);
 
-    // Category groups
-    const catG = svg.selectAll(".barG").data(byCategory, d => d.category);
-    const catEnter = catG.enter().append("g").attr("class", "barG")
+    xAxisG.transition().duration(600).ease(d3.easeCubicOut).call(xAxis)
+      .selectAll("text").style("text-anchor", "end").attr("transform", "rotate(-30)");
+    yAxisG.transition().duration(600).ease(d3.easeCubicOut).call(yAxis);
+
+    // Category groups (IMPORTANT: bind catsSorted, not byCategory)
+    const catG = svg.selectAll(".barG").data(catsSorted, d => d.category);
+
+    const catEnter = catG.enter().append("g")
+      .attr("class", "barG")
       .attr("transform", d => `translate(${x(d.category)},0)`);
-    catEnter.merge(catG).transition().duration(600)
+
+    catEnter.merge(catG).transition().duration(600).ease(d3.easeCubicOut)
       .attr("transform", d => `translate(${x(d.category)},0)`);
+
     catG.exit().remove();
 
     // Inner band per current groups
     const xg = d3.scaleBand().domain(groups).range([0, x.bandwidth()]).padding(0.12);
 
-    // Bars
-    const bars = catEnter.merge(catG).selectAll("rect").data(d => d.values, v => v.group);
+    // Bars (attach indices so we can stagger delays)
+    const bars = catEnter.merge(catG).selectAll("rect").data(
+      d => d.values.map((v, gi) => Object.assign(
+        { _cat: d.category, _catIndex: catIndex.get(d.category), _groupIndex: gi },
+        v
+      )),
+      v => `${v.group}|${v._cat}` // stable key across resorting
+    );
+
+    const tIn = 800;
+    const dtCat = 120;   // delay per category
+    const dtGroup = 60;  // delay per subgroup within a category
 
     bars.enter().append("rect")
       .attr("x", v => xg(v.group))
@@ -171,21 +241,27 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
           .style("left", (event.pageX + 12) + "px")
           .style("top", (event.pageY - 24) + "px")
           .html(`<strong>${filterDim}:</strong> ${v.group}<br>
-                 <strong>${valueType === "avg" ? "Avg" : "Count"}:</strong> ${valueType === "avg" ? "$" + v.value.toFixed(2) : v.value}`);
+                <strong>${valueType === "avg" ? "Avg" : "Count"}:</strong> ${valueType === "avg" ? "$" + v.value.toFixed(2) : v.value}`);
       })
       .on("mouseleave", () => tooltip.style("opacity", 0))
       .merge(bars)
-      .transition().duration(800)
+      .transition()
+      .duration(tIn)
+      .ease(d3.easeCubicOut)
+      .delay(v => v._catIndex * dtCat + v._groupIndex * dtGroup) // cascading L→R
       .attr("x", v => xg(v.group))
       .attr("width", xg.bandwidth())
       .attr("y", v => y(v.value))
       .attr("height", v => y(0) - y(v.value))
       .attr("fill", v => color(v.group));
 
-    bars.exit().transition().duration(400).attr("y", y(0)).attr("height", 0).remove();
+    bars.exit()
+      .transition().duration(400).ease(d3.easeCubicIn)
+      .attr("y", y(0))
+      .attr("height", 0)
+      .remove();
 
     // ===== Legend (two fixed rows under the title) =====
-    // Split the groups into two rows: first half on row 0, remainder on row 1.
     const mid = Math.ceil(groups.length / 2);
     const twoRow = groups.map((g, i) => ({
       label: g,
@@ -193,15 +269,14 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
       col: i < mid ? i : (i - mid)
     }));
 
-    const colSpacing = 110; // horizontal spacing between legend items
-    const rowY = (r) => (r === 0 ? 0 : 22); // vertical positions for two rows
+    const colSpacing = 110;
+    const rowY = r => (r === 0 ? 0 : 22);
 
     const legItems = legendG.selectAll("g.legend-item").data(twoRow, d => d.label);
     const legEnter = legItems.enter().append("g")
       .attr("class", "legend-item")
       .attr("transform", d => `translate(${d.col * colSpacing}, ${rowY(d.row)})`);
 
-    // colored swatch
     legEnter.append("rect")
       .attr("width", 12)
       .attr("height", 12)
@@ -210,7 +285,6 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
       .attr("ry", 2)
       .attr("fill", d => color(d.label));
 
-    // label
     legEnter.append("text")
       .attr("x", 18)
       .attr("y", 0)
@@ -219,24 +293,150 @@ d3.csv("data/shopping_behavior_updated.csv").then(raw => {
       .style("fill", "#cbd5e1")
       .text(d => d.label);
 
-    // update positions/colors for existing items
     legItems.merge(legEnter)
-      .transition().duration(400)
+      .transition().duration(400).ease(d3.easeCubicOut)
       .attr("transform", d => `translate(${d.col * colSpacing}, ${rowY(d.row)})`)
       .select("rect")
       .attr("fill", d => color(d.label));
 
     legItems.exit().remove();
 
-    // Update title text (avg vs count + current grouping)
+    // Title
+    const seasonSuffix = seasonFilter === "All" ? "" : ` (${seasonFilter})`;
+    const sortSuffix = (sortMode === "value_desc")
+      ? ` — sorted by Highest ${valueType === "avg" ? "Average Spend" : "Count"}`
+      : "";
     svg.select(".title").text(
-      `${valueType === "avg" ? "Average Purchase Amount" : "Number of Purchases"} by Category — grouped by ${filterDim}`
+      `${valueType === "avg" ? "Average Purchase Amount" : "Number of Purchases"} by Category — grouped by ${filterDim}${seasonSuffix}${sortSuffix}`
     );
   }
 
+  function renderLoyalty() {
+    // Clear and set up a fresh SVG for the loyalty view
+    const m = { top: 72, right: 28, bottom: 56, left: 68 };
+    const w = 1000 - m.left - m.right;
+    const h = 520 - m.top - m.bottom;
+
+    const root = d3.select("#chart2");
+    root.selectAll("*").remove();
+
+    const svg2 = root.append("svg")
+      .attr("viewBox", `0 0 ${w + m.left + m.right} ${h + m.top + m.bottom}`)
+      .append("g")
+      .attr("transform", `translate(${m.left},${m.top})`);
+
+    // Apply season filter and keep only finite points
+    const filteredAll = (seasonFilter === "All") ? data : data.filter(d => d.season === seasonFilter);
+    const filtered = filteredAll
+      .map(d => ({
+        ...d,
+        // defensively coerce & trim
+        subscription: (d.subscription || "").trim(),
+        frequency: (d.frequency || "").trim()
+      }))
+      .filter(d => Number.isFinite(d.previous) && Number.isFinite(d.amount));
+
+    // Early message if nothing to plot
+    if (filtered.length === 0) {
+      svg2.append("text")
+        .attr("x", 0).attr("y", 0)
+        .attr("dy", "1em")
+        .style("fill", "#cbd5e1")
+        .text("No data points to display for this selection.");
+      return;
+    }
+
+    // Scales
+    const x = d3.scaleLinear()
+      .domain([0, d3.max(filtered, d => d.previous) || 1]).nice()
+      .range([0, w]);
+
+    const y = d3.scaleLinear()
+      .domain([0, d3.max(filtered, d => d.amount) || 1]).nice()
+      .range([h, 0]);
+
+    // Color by Subscription (fallback to 'No' if unexpected)
+    const col = d3.scaleOrdinal()
+      .domain(["Yes","No"])
+      .range(d3.schemeTableau10);
+
+    const getSub = s => (s === "Yes" || s === "No") ? s : "No";
+
+    // Size by frequency with a safe fallback
+    const freqOrder = ["Weekly","Fortnightly","Monthly","Quarterly","Annually"];
+    const size = d3.scaleOrdinal()
+      .domain(freqOrder)
+      .range([5,5,5,5,5]);
+    const rOf = f => size.domain().includes(f) ? size(f) : 5;
+
+    // Axes
+    svg2.append("g").attr("transform", `translate(0,${h})`).call(d3.axisBottom(x));
+    svg2.append("g").call(d3.axisLeft(y));
+
+    svg2.append("text")
+      .attr("class", "title")
+      .attr("x", 0)
+      .attr("y", -32)
+      .text(`Loyalty View — Spend vs Previous Purchases${seasonFilter === "All" ? "" : ` (${seasonFilter})`}`);
+
+    // Points with subtle entrance animation
+    const pts = svg2.selectAll("circle").data(filtered, (d,i) => i);
+
+    pts.enter().append("circle")
+      .attr("cx", d => x(d.previous))
+      .attr("cy", y(0))
+      .attr("r", d => rOf(d.frequency))
+      .attr("fill", d => col(getSub(d.subscription)))
+      .attr("opacity", 0.10)
+      .on("mousemove", (evt, d) => {
+        tooltip.style("opacity",1)
+        .style("transition", "opacity 0.15s ease")
+          .style("left", (evt.pageX + 12) + "px")
+          .style("top", (evt.pageY - 24) + "px")
+          .html(`
+            <div style="font-size:13px; line-height:1.4;">
+              🛒 <strong>Previous Purchases:</strong> ${d.previous}<br/>
+              💵 <strong>Spend:</strong> $${d.amount.toFixed(2)}<br/>
+              ⭐ <strong>Subscription:</strong> ${d.subscription === "Yes" ? "Member ✅" : "No ❌"}<br/>
+              ⏱️ <strong>Frequency:</strong> ${d.frequency || "—"}<br/>
+              🏷️ <strong>Category:</strong> ${d.category}
+            </div>`
+          );
+      })
+      .on("mouseleave", () => tooltip.style("opacity",0).style("transition", "opacity 0.15s ease"))
+      .transition()
+      .duration(700)
+      .ease(d3.easeCubicOut)
+      .attr("cy", d => y(d.amount))
+      .attr("opacity", 0.85);
+
+    // Simple legend for Subscription
+    const legend = svg2.append("g").attr("transform", `translate(${w - 160}, -10)`);
+    ["Yes", "No"].forEach((lab, i) => {
+      const g = legend.append("g").attr("transform", `translate(${i*70},0)`);
+      g.append("circle").attr("r",6).attr("cy",-6).attr("fill", col(lab));
+      g.append("text").attr("x", 12).attr("dy", "-0.2em").text(lab).style("font-size","12px").style("fill","#cbd5e1");
+    });
+
+    // Axis labels
+    svg2.append("text")
+      .attr("x", w/2).attr("y", h + 40)
+      .attr("text-anchor", "middle")
+      .style("fill", "#cbd5e1")
+      .text("Previous Purchases");
+
+    svg2.append("text")
+      .attr("transform", "rotate(-90)")
+      .attr("x", -h/2).attr("y", -48)
+      .attr("text-anchor", "middle")
+      .style("fill", "#cbd5e1")
+      .text("Purchase Amount (USD)");
+  }
+
+// After defining update() and renderLoyalty(), run initial draw
   // Initial render
   update();
-}).catch(err => {
-  console.error("Failed to load CSV:", err);
-  d3.select("#chart").append("p").text("Failed to load data.");
-});
+  }).catch(err => {
+    console.error("Failed to load CSV:", err);
+    d3.select("#chart").append("p").text("Failed to load data.");
+  });
